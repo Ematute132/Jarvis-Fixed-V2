@@ -12,53 +12,43 @@ import org.firstinspires.ftc.teamcode.FieldConstants.BLUE_GOAL_X
 import org.firstinspires.ftc.teamcode.FieldConstants.GOAL_Y
 import org.firstinspires.ftc.teamcode.FieldConstants.RED_GOAL_X
 import org.firstinspires.ftc.teamcode.Lower.Drive.Drive
-import org.firstinspires.ftc.teamcode.ShooterConstants.TurretConstants.motorGearTeeth
-import org.firstinspires.ftc.teamcode.ShooterConstants.TurretConstants.outputGearTeeth
-import java.lang.Math.toRadians
+import org.firstinspires.ftc.teamcode.TurretConstants.motorGearTeeth
+import org.firstinspires.ftc.teamcode.TurretConstants.outputGearTeeth
+
 import kotlin.math.*
 
-// Angle limits (degrees) - physical constraints
 const val TURRET_MIN_ANGLE = -135.0
 const val TURRET_MAX_ANGLE = 135.0
-
-// East Loop ELC Encoder V2 - Quadrature (4000 CPR)
-const val ENCODER_CPR = 4000  // Counts per revolution
+const val ENCODER_CPR = 4000
 
 @Configurable
 object Turret : Subsystem {
 
-    enum class State {
-        IDLE,
-        MANUAL,
-        LOCKED,
-        RESET
-    }
+    enum class State { IDLE, MANUAL, LOCKED, RESET }
 
     // ==================== TUNABLE COEFFICIENTS ====================
-    @JvmField var kP: Double = 0.15
+    @JvmField var kP: Double = 0.03
     @JvmField var kI: Double = 0.0
-    @JvmField var kD: Double = 0.01
-
-    @JvmField var ffKV: Double = 0.32
+    @JvmField var kD: Double = 0.005
+    @JvmField var ffKV: Double = 0.07
     @JvmField var ffKA: Double = 0.0
     @JvmField var ffKS: Double = 0.01
-
-    // Other tunables
     @JvmField var minPower: Double = 0.15
     @JvmField var maxPower: Double = 0.75
-    @JvmField var alignmentTolerance: Double = 2.0
-    @JvmField var rotationCompGain: Double = 1.5
+    @JvmField var alignmentTolerance: Double = 1.0
+    @JvmField var rotationCompGain: Double = 2.0
 
-    // Motor - encoder plugged into motor's encoder port
+    // ==================== SOTM ====================
+    // Tune this — how far ahead in time to predict robot position (seconds)
+    // Start at 0.0 and increase until turret leads robot motion correctly
+    @JvmField var sotmLookahead: Double = 0.0
+
     var motor = MotorEx("turret")
-
     var currentState = State.IDLE
     var manualPower = 0.0
-
     var targetYaw = 0.0
     var isLocked = false
 
-    // Velocity tracking
     private val velTimer = ElapsedTime()
     private var lastRobotHeading = 0.0
     var robotAngularVelocity = 0.0
@@ -79,19 +69,15 @@ object Turret : Subsystem {
     override fun initialize() {
         motor.motor.mode = DcMotor.RunMode.STOP_AND_RESET_ENCODER
         motor.motor.mode = DcMotor.RunMode.RUN_WITHOUT_ENCODER
-
         velTimer.reset()
-        lastRobotHeading = 0.0
+        lastRobotHeading = Drive.currentHeading   // seed with current heading (radians)
         robotAngularVelocity = 0.0
-
         controller = buildController()
-
         targetYaw = getYaw()
     }
 
     // ==================== PERIODIC ====================
     override fun periodic() {
-        // Rebuild controller each cycle to pick up live Configurable changes
         controller = buildController()
 
         if (currentState == State.LOCKED) {
@@ -99,18 +85,10 @@ object Turret : Subsystem {
         }
 
         when (currentState) {
-            State.IDLE -> {
-                motor.power = 0.0
-            }
-            State.MANUAL -> {
-                motor.power = manualPower.coerceIn(-1.0, 1.0)
-            }
-            State.LOCKED -> {
-                runLockedControl()
-            }
-            State.RESET -> {
-                runResetControl()
-            }
+            State.IDLE -> motor.power = 0.0
+            State.MANUAL -> motor.power = manualPower.coerceIn(-1.0, 1.0)
+            State.LOCKED -> runLockedControl()
+            State.RESET -> runResetControl()
         }
 
         ActiveOpMode.telemetry.addData("Turret/State", currentState.name)
@@ -118,33 +96,49 @@ object Turret : Subsystem {
         ActiveOpMode.telemetry.addData("Turret/Target", "%.2f°".format(Math.toDegrees(targetYaw)))
         ActiveOpMode.telemetry.addData("Turret/Locked", if (isLocked) "YES" else "NO")
         ActiveOpMode.telemetry.addData("Turret/RobotVel", "%.2f°/s".format(Math.toDegrees(robotAngularVelocity)))
+        ActiveOpMode.telemetry.addData("Turret/SOTM", "lookahead=%.2fs".format(sotmLookahead))
     }
 
     // ==================== LOCKED CONTROL ====================
     fun runLockedControl() {
-        if (Drive.poseValid) {
-            val deltaX = goalX - Drive.currentX
-            val deltaY = goalY - Drive.currentY
-            val fieldAngleToGoal = atan2(deltaY, deltaX)
+        if (!Drive.poseValid) return
 
-            val robotHeadingRad = Drive.currentHeading
-            targetYaw = normalizeAngle(fieldAngleToGoal - robotHeadingRad)
+        // SOTM: predict where robot will be using pinpoint velocity * lookahead
+        // When sotmLookahead = 0.0 this is identical to static aiming
+        val predictedX = Drive.currentX + Drive.velocityX * sotmLookahead
+        val predictedY = Drive.currentY + Drive.velocityY * sotmLookahead
+
+        val deltaX = goalX - predictedX
+        val deltaY = goalY - predictedY
+        val fieldAngleToGoal = atan2(deltaY, deltaX)
+
+        // Drive.currentHeading is in radians (Pedro)
+        val robotHeadingRad = Drive.currentHeading
+        val rawTarget = normalizeAngle(fieldAngleToGoal - robotHeadingRad)
+
+        val minRad = Math.toRadians(TURRET_MIN_ANGLE)
+        val maxRad = Math.toRadians(TURRET_MAX_ANGLE)
+
+        // FIX: if target is outside physical range, reset controller to prevent
+        // windup snap when target re-enters range, but still drive to the limit
+        val isOutsideRange = rawTarget < minRad || rawTarget > maxRad
+        targetYaw = rawTarget.coerceIn(minRad, maxRad)
+
+        if (isOutsideRange) {
+            controller.reset()
         }
-
-        // Clamp target to physical limits
-        targetYaw = targetYaw.coerceIn(
-            Math.toRadians(TURRET_MIN_ANGLE),
-            Math.toRadians(TURRET_MAX_ANGLE)
-        )
 
         val currentYaw = getYaw()
         val rotationCompensation = -robotAngularVelocity * rotationCompGain
 
         controller.goal = KineticState(targetYaw, rotationCompensation)
-        val power = controller.calculate(KineticState(currentYaw, robotAngularVelocity))
+        var power = controller.calculate(KineticState(currentYaw, robotAngularVelocity))
 
-        // Apply minimum power threshold to overcome friction
-
+        // Minimum power to overcome static friction — only apply when outside deadband
+        val errorDeg = Math.toDegrees(abs(targetYaw - currentYaw))
+        if (errorDeg > alignmentTolerance) {
+            power += sign(targetYaw - currentYaw) * minPower
+        }
 
         motor.power = power.coerceIn(-maxPower, maxPower)
     }
@@ -185,44 +179,55 @@ object Turret : Subsystem {
             return
         }
 
-        val currentHeading = Drive.currentHeading
-
+        val currentHeading = Drive.currentHeading  // radians from Pedro
         if (currentHeading.isNaN() || currentHeading.isInfinite()) {
             velTimer.reset()
             return
         }
 
+        // Both in radians — normalizeAngle handles wrap correctly
         val deltaHeading = normalizeAngle(currentHeading - lastRobotHeading)
-        robotAngularVelocity = deltaHeading / dt
+        robotAngularVelocity = deltaHeading / dt   // rad/s
         lastRobotHeading = currentHeading
         velTimer.reset()
     }
 
     // ==================== PUBLIC METHODS ====================
+    fun lock() {
+        // Seed heading on entry to prevent velocity spike on first tick
+        lastRobotHeading = Drive.currentHeading
+        velTimer.reset()
+        isLocked = true
+        currentState = State.LOCKED
+    }
+
     fun stop() {
         currentState = State.IDLE
+        isLocked = false
         motor.power = 0.0
     }
 
     fun setManual(power: Double) {
         currentState = State.MANUAL
+        isLocked = false
         manualPower = power
     }
 
     fun resetToCenter() {
         currentState = State.RESET
+        isLocked = false
     }
 
     fun getYawDegrees(): Double = Math.toDegrees(getYaw())
 
-    fun getYaw(): Double {
-        val ticks = motor.currentPosition.toDouble()
-        return ticksToRadians(ticks)
-    }
+    fun getYaw(): Double = normalizeAngle(
+        motor.currentPosition.toDouble() * ticksToRadians()
+    )
 
-    private fun ticksToRadians(ticks: Double): Double {
-        val gearRatio = motorGearTeeth.toDouble() / outputGearTeeth.toDouble()
-        return ticks * (2.0 * PI / ENCODER_CPR) * gearRatio
+    private fun ticksToRadians(): Double {
+        // FIX: gear ratio was inverted — output/motor not motor/output
+        val gearRatio = outputGearTeeth.toDouble() / motorGearTeeth.toDouble()
+        return (2.0 * PI / ENCODER_CPR) * (1.0 / gearRatio)
     }
 
     fun normalizeAngle(radians: Double): Double {
@@ -234,10 +239,6 @@ object Turret : Subsystem {
 
     fun setAlliance(red: Boolean) {
         alliance = if (red) Drive.Alliance.RED else Drive.Alliance.BLUE
-    }
-
-    fun rebuildController() {
-        controller = buildController()
     }
 
     fun reZeroEncoder() {

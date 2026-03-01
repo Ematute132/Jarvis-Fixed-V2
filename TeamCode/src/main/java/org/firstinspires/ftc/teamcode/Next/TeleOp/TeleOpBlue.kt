@@ -16,13 +16,14 @@ import dev.nextftc.ftc.ActiveOpMode.telemetry
 import org.firstinspires.ftc.teamcode.Lower.Drive.Drive
 import org.firstinspires.ftc.teamcode.Lower.Gate.Gate
 import org.firstinspires.ftc.teamcode.Lower.Intake.Intake
-
 import org.firstinspires.ftc.teamcode.Shooter.Hood.Hood
 import org.firstinspires.ftc.teamcode.Shooter.Limelight.Limelight
 import org.firstinspires.ftc.teamcode.AutoAim.AutoAim
 import org.firstinspires.ftc.teamcode.Next.Shooter.FlyWheel
+
 import org.firstinspires.ftc.teamcode.Next.Shooter.Turret
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants
+
 
 
 /**
@@ -60,7 +61,7 @@ class TeleOpBlue : NextFTCOpMode() {
     // ==================== STATE ====================
     private var currentAimMode = AimMode.ODO
     private var currentFlyMode = FlyMode.AUTO
-    private var shootState = ShootState.READY
+
     private var autoAimEnabled = false
 
     // ==================== INITIALIZATION ====================
@@ -91,15 +92,15 @@ class TeleOpBlue : NextFTCOpMode() {
     override fun onStartButtonPressed() {
         // Start drivetrain - field centric
         PedroDriverControlled(
-            -Gamepads.gamepad1.leftStickY,
-            -Gamepads.gamepad1.leftStickX,
+            Gamepads.gamepad1.leftStickY,
+            Gamepads.gamepad1.leftStickX,
             -Gamepads.gamepad1.rightStickX,
             false
         ).schedule()
 
         // Reset turret at start
 
-        AutoAim.setAutoAim(true)
+       // AutoAim.setAutoAim(true)
         // Default to auto aim
 
         currentAimMode = AimMode.ODO
@@ -128,7 +129,7 @@ class TeleOpBlue : NextFTCOpMode() {
         // --- FLYWHEEL PRESETS ---
         // D-Pad Up: Far
         Gamepads.gamepad1.dpadUp.whenBecomesTrue {
-                FlyWheel.setVelocity(1900.0).also({Hood.far()})
+            FlyWheel.setVelocity(1900.0).also({Hood.far()})
         }
 
         // D-Pad Right: Mid
@@ -138,7 +139,7 @@ class TeleOpBlue : NextFTCOpMode() {
 
         // D-Pad Down: Close
         Gamepads.gamepad1.dpadDown.whenBecomesTrue {
-            FlyWheel.setVelocity(1000.0).also({Hood.close()})
+            FlyWheel.setVelocity(1150.0).also({Hood.close()})
         }
 
         // D-Pad Left: Off
@@ -171,7 +172,7 @@ class TeleOpBlue : NextFTCOpMode() {
 
         // Update auto aim if enabled
         // Update turret based on aim mode
-        Turret.runLockedControl()
+        Turret.currentState = Turret.State.LOCKED
 
         // Update telemetry
         updateTelemetry()

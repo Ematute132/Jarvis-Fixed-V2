@@ -21,19 +21,18 @@ object FlyWheel: Subsystem {
 
     private val battery: VoltageSensor by lazy { hardwareMap.get(VoltageSensor::class.java, "Control Hub") }
 
-    // ==================== TUNABLE COEFFICIENTS ====================
-    @JvmField var kP: Double = 0.015
+    @JvmField var kP: Double = 0.01
     @JvmField var kI: Double = 0.0
     @JvmField var kD: Double = 0.01
 
-    @JvmField var ffKV: Double = 0.035
+    @JvmField var ffKV: Double = 0.030
     @JvmField var ffKA: Double = 0.0002
     @JvmField var ffKS: Double = 0.0
 
     private const val V_NOMINAL = 12.0
-    internal const val IDLE_VELOCITY: Double = 1140.0
+    const val IDLE_VELOCITY: Double = 1140.0
 
-    internal var flywheelTarget: Double = 0.0
+    var flywheelTarget: Double = 0.0
 
     private var velFilt = 0.0
     private var voltFilt = 12.0
@@ -42,15 +41,15 @@ object FlyWheel: Subsystem {
 
     @JvmField var voltageCompEnabled = true
 
-    internal var usePID = true
+    var usePID = true
 
     fun isAtTarget(): Boolean {
         val rounded = roundToNearest20(flywheelTarget)
         return ((rounded - 20.0) < flywheelMotors.velocity) && ((rounded + 40.0) > flywheelMotors.velocity)
     }
 
-    internal fun update() {
-        // Rebuild each cycle to pick up live Configurable changes
+    // FIX: override periodic so NextFTC actually calls this every loop
+    override fun periodic() {
         val pid = PIDController(kP, kI, kD)
         val ff = SimpleFeedforward(SimpleFFCoefficients(ffKV, ffKA, ffKS))
 
@@ -68,7 +67,6 @@ object FlyWheel: Subsystem {
 
         var raw = (pidOut + ffOut).coerceIn(-1.0, 1.0)
 
-        // usePID=false disables only PID, FF still runs to maintain speed
         if (!usePID) {
             raw = ffOut.coerceIn(-1.0, 1.0)
         }
@@ -81,14 +79,15 @@ object FlyWheel: Subsystem {
 
         flywheelMotors.power = pow
 
-        ActiveOpMode.telemetry.addData("flywheel power:", pow)
-        ActiveOpMode.telemetry.addData("goal velocity:", flywheelTarget)
-        ActiveOpMode.telemetry.addData("flywheel velocity", topFlywheelMotor.velocity)
+        ActiveOpMode.telemetry.addData("Flywheel/Power", pow)
+        ActiveOpMode.telemetry.addData("Flywheel/Target", flywheelTarget)
+        ActiveOpMode.telemetry.addData("Flywheel/Velocity", topFlywheelMotor.velocity)
+        ActiveOpMode.telemetry.addData("Flywheel/AtTarget", if (isAtTarget()) "YES" else "NO")
         ActiveOpMode.telemetry.addData("Flywheel/kP", "%.4f".format(kP))
         ActiveOpMode.telemetry.addData("Flywheel/kV", "%.4f".format(ffKV))
     }
 
-    internal fun roundToNearest20(velocity: Double): Double {
+    fun roundToNearest20(velocity: Double): Double {
         return round(velocity / 20.0) * 20.0
     }
 

@@ -66,9 +66,7 @@ class TestAutoAim : NextFTCOpMode() {
         Drive.update()
 
         // Update auto aim
-        if (AutoAim.enabled) {
-            AutoAim.update()
-        }
+
 
         telemetry.addData("=== AUTO AIM TEST ===", "")
         telemetry.addData("Enabled", if (AutoAim.enabled) "YES" else "NO")
@@ -78,7 +76,7 @@ class TestAutoAim : NextFTCOpMode() {
 
         // Auto aim values
         telemetry.addData("", "")
-        telemetry.addData("Auto/RPM", "%.0f".format(AutoAim.targetRpm))
+        //telemetry.addData("Auto/RPM", "%.0f".format(AutoAim.targetRpm))
         telemetry.addData("Auto/Hood", "%.2f".format(AutoAim.targetHoodPosition))
 
         // Actual values

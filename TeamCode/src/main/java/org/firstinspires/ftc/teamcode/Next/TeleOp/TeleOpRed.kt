@@ -19,8 +19,10 @@ import org.firstinspires.ftc.teamcode.Shooter.Hood.Hood
 import org.firstinspires.ftc.teamcode.Shooter.Limelight.Limelight
 import org.firstinspires.ftc.teamcode.AutoAim.AutoAim
 import org.firstinspires.ftc.teamcode.Next.Shooter.FlyWheel
+
 import org.firstinspires.ftc.teamcode.Next.Shooter.Turret
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants
+
 
 @TeleOp(name = "TeleOp - Red", group = "Competition")
 class TeleOpRed : NextFTCOpMode() {
@@ -121,7 +123,7 @@ class TeleOpRed : NextFTCOpMode() {
         Turret.runLockedControl()
 
         // Flywheel PID loop
-        FlyWheel.update()
+
 
         updateTelemetry()
     }
