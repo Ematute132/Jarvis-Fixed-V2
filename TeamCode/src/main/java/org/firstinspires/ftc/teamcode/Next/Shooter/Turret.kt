@@ -8,10 +8,13 @@ import dev.nextftc.control.builder.controlSystem
 import dev.nextftc.core.subsystems.Subsystem
 import dev.nextftc.hardware.impl.MotorEx
 import dev.nextftc.ftc.ActiveOpMode.telemetry
+import org.firstinspires.ftc.teamcode.FieldConstants
 import org.firstinspires.ftc.teamcode.FieldConstants.BLUE_GOAL_X
 import org.firstinspires.ftc.teamcode.FieldConstants.GOAL_Y
 import org.firstinspires.ftc.teamcode.FieldConstants.RED_GOAL_X
 import org.firstinspires.ftc.teamcode.Lower.Drive.Drive
+import org.firstinspires.ftc.teamcode.Lower.Drive.Drive.currentX
+import org.firstinspires.ftc.teamcode.Lower.Drive.Drive.currentY
 import org.firstinspires.ftc.teamcode.TurretConstants.motorGearTeeth
 import org.firstinspires.ftc.teamcode.TurretConstants.outputGearTeeth
 
@@ -40,15 +43,23 @@ object Turret : Subsystem {
     var currentState = State.IDLE
     var manualPower = 0.0
     var targetYaw = 0.0
+    var isLocked = false
 
     private val velTimer = ElapsedTime()
     private var lastRobotHeading = 0.0
     var robotAngularVelocity = 0.0
 
-    @JvmField var alliance = Drive.Alliance.BLUE
+    enum class Alliance { RED, BLUE }
+    var alliance = Alliance.BLUE
 
-    private val goalX: Double get() = if (alliance == Drive.Alliance.RED) RED_GOAL_X else BLUE_GOAL_X
-    private val goalY: Double get() = GOAL_Y
+    // ==================== GOAL DATA ====================
+    /** Get goal X based on alliance */
+    val goalX: Double get() = if (alliance == Alliance.RED) RED_GOAL_X else BLUE_GOAL_X
+
+    /** Goal Y (same for both alliances) */
+    val goalY = GOAL_Y
+
+
 
     private val MIN_ANGLE = Math.toRadians(TURRET_MIN_ANGLE)
     private val MAX_ANGLE = Math.toRadians(TURRET_MAX_ANGLE)
@@ -85,6 +96,7 @@ object Turret : Subsystem {
         telemetry.addData("Turret/State", currentState.name)
         telemetry.addData("Turret/Yaw", "%.2f°".format(Math.toDegrees(getYaw())))
         telemetry.addData("Turret/Target", "%.2f°".format(Math.toDegrees(targetYaw)))
+        telemetry.addData("Turret/Locked", if (isLocked) "YES" else "NO")
         telemetry.addData("Turret/RobotVel", "%.2f°/s".format(Math.toDegrees(robotAngularVelocity)))
         telemetry.addData("Turret/SOTM", "lookahead=%.2fs".format(sotmLookahead))
         telemetry.addData("Turret/Power", motor.power)
@@ -103,11 +115,11 @@ object Turret : Subsystem {
     fun runLockedControl() {
         if (!Drive.poseValid) return
 
-        val predictedX = Drive.currentX + Drive.velocityX * sotmLookahead
-        val predictedY = Drive.currentY + Drive.velocityY * sotmLookahead
+        //val predictedX = Drive.currentX + Drive.velocityX * sotmLookahead
+        //val predictedY = Drive.currentY + Drive.velocityY * sotmLookahead
 
-        val deltaX = goalX - predictedX
-        val deltaY = goalY - predictedY
+        val deltaX = goalX - currentX
+        val deltaY = goalY - currentY
         val fieldAngleToGoal = atan2(deltaY, deltaX)
 
         val robotHeadingRad = Drive.currentHeading
@@ -116,7 +128,7 @@ object Turret : Subsystem {
         applyControl(rawTarget, -robotAngularVelocity)
     }
 
-    private fun runResetControl() {
+     fun runResetControl() {
         val currentYaw = getYaw()
         val error = normalizeAngle(0.0 - currentYaw)
         val errorDeg = Math.toDegrees(abs(error))
@@ -157,14 +169,29 @@ object Turret : Subsystem {
         velTimer.reset()
     }
 
-
+    fun lock() {
+        lastRobotHeading = Drive.currentHeading
+        velTimer.reset()
+        isLocked = true
+        currentState = State.LOCKED
+    }
 
     fun stop() {
         currentState = State.IDLE
+        isLocked = false
         motor.power = 0.0
     }
 
+    fun setManual(power: Double) {
+        currentState = State.MANUAL
+        isLocked = false
+        manualPower = power
+    }
 
+    fun resetToCenter() {
+        currentState = State.RESET
+        isLocked = false
+    }
 
     fun getYaw(): Double = normalizeAngle(
         motor.currentPosition.toDouble() * ticksToRadians()

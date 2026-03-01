@@ -57,9 +57,10 @@ class TeleOpBlue : NextFTCOpMode() {
     }
 
     override fun onInit() {
+
         // Set to blue alliance
-        Drive.alliance = Drive.Alliance.BLUE
-        Drive.lastKnown = Pose(72.0,72.0,0.0)
+       // follower.pose = Pose(72.0,72.0,0.0)
+        Turret.alliance = Turret.Alliance.BLUE
         follower.pose = Drive.lastKnown
 
     }
@@ -102,6 +103,7 @@ class TeleOpBlue : NextFTCOpMode() {
         Gamepads.gamepad1.dpadDown.whenBecomesTrue {
             FlyWheel.setVelocity(1150.0).also({Hood.close()})
         }
+        Gamepads.gamepad1.square.whenBecomesTrue { follower.pose = Pose(144.0,0.0,0.0) }
     }
     // ==================== UPDATE LOOP ====================
     override fun onUpdate() {
@@ -112,6 +114,13 @@ class TeleOpBlue : NextFTCOpMode() {
         updateTelemetry()
     }
 
+    override fun onStop() {
+        Intake.stop
+        Gate.close
+        Hood.close
+        FlyWheel.stop
+        currentState = Turret.State.IDLE
+    }
     // ==================== TELEMETRY ====================
     private fun updateTelemetry() {
         // Position
@@ -120,6 +129,9 @@ class TeleOpBlue : NextFTCOpMode() {
         telemetry.addData("Pose/Y", "%.1f".format(Drive.currentY))
         telemetry.addData("Pose/Heading", "%.1f°".format(Math.toDegrees(Drive.currentHeading)))
         // Hood
+        telemetry.addData("last pose x",Drive.lastKnown.x)
+        telemetry.addData("last pose y",Drive.lastKnown.y)
+        telemetry.addData("last pose h",Drive.lastKnown.heading)
         telemetry.addData("Hood/Position", "%.2f".format(Hood.currentPosition))
         telemetry.addData("Hood/Preset", Hood.currentPreset.name)
         telemetry.addData("Zone", if (Drive.isInShootingZone()) "YES" else "NO")

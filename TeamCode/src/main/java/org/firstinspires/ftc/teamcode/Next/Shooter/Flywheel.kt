@@ -25,12 +25,12 @@ object FlyWheel: Subsystem {
     @JvmField var kI: Double = 0.0
     @JvmField var kD: Double = 0.01
 
-    @JvmField var ffKV: Double = 0.030
+    @JvmField var ffKV: Double = 0.02
     @JvmField var ffKA: Double = 0.0002
     @JvmField var ffKS: Double = 0.0
 
     private const val V_NOMINAL = 12.0
-    const val IDLE_VELOCITY: Double = 1140.0
+    const val IDLE_VELOCITY: Double = 0.0
 
     var flywheelTarget: Double = 0.0
 
@@ -99,4 +99,5 @@ object FlyWheel: Subsystem {
     val mid   = InstantCommand { setVelocity(1500.0) }
     val far   = InstantCommand { setVelocity(1900.0) }
     val idle  = InstantCommand { setVelocity(IDLE_VELOCITY) }
+    val stop = InstantCommand{setVelocity(0.0)}
 }
