@@ -12,8 +12,6 @@ import org.firstinspires.ftc.teamcode.FieldConstants.BLUE_GOAL_X
 import org.firstinspires.ftc.teamcode.FieldConstants.GOAL_Y
 import org.firstinspires.ftc.teamcode.FieldConstants.RED_GOAL_X
 import org.firstinspires.ftc.teamcode.Lower.Drive.Drive
-import org.firstinspires.ftc.teamcode.Lower.Drive.Drive.currentX
-import org.firstinspires.ftc.teamcode.Lower.Drive.Drive.currentY
 import org.firstinspires.ftc.teamcode.TurretConstants.motorGearTeeth
 import org.firstinspires.ftc.teamcode.TurretConstants.outputGearTeeth
 
@@ -26,7 +24,7 @@ const val ENCODER_CPR = 4000
 @Configurable
 object Turret : Subsystem {
 
-    enum class State { IDLE, MANUAL, LOCKED, RESET }
+    enum class State { IDLE, MANUAL, LOCKED, RESET, RESET_TO_GOAL }
 
     @JvmField var kP: Double = 0.5
     @JvmField var kI: Double = 0.0
@@ -37,8 +35,6 @@ object Turret : Subsystem {
     @JvmField var maxPower: Double = 1.0
     @JvmField var alignmentTolerance: Double = 2.0
     @JvmField var sotmLookahead: Double = 0.0
-
-    // How many degrees each nudge call shifts the offset
     @JvmField var nudgeStepDegrees: Double = 1.0
 
     var motor = MotorEx("turret")
@@ -47,7 +43,6 @@ object Turret : Subsystem {
     var targetYaw = 0.0
     var isLocked = false
 
-    // Offset applied on top of the calculated lock angle — nudge this to trim aim
     var angleOffsetRad: Double = 0.0
 
     private val velTimer = ElapsedTime()
@@ -82,7 +77,10 @@ object Turret : Subsystem {
     }
 
     override fun periodic() {
-        if (currentState == State.LOCKED) {
+        // Rebuild controller each cycle for live tuning
+        controller = buildController()
+        
+        if (currentState == State.LOCKED || currentState == State.RESET_TO_GOAL) {
             updateRobotAngularVelocity()
         }
 
@@ -91,6 +89,7 @@ object Turret : Subsystem {
             State.MANUAL -> motor.power = manualPower.coerceIn(-1.0, 1.0)
             State.LOCKED -> runLockedControl()
             State.RESET -> runResetControl()
+            State.RESET_TO_GOAL -> runResetToGoal()
         }
 
         telemetry.addData("Turret/State", currentState.name)
@@ -114,8 +113,8 @@ object Turret : Subsystem {
     }
 
     fun runLockedControl() {
-        val deltaX = goalX - currentX
-        val deltaY = goalY - currentY
+        val deltaX = goalX - Drive.currentX
+        val deltaY = goalY - Drive.currentY
         val fieldAngleToGoal = atan2(deltaY, deltaX)
 
         val robotHeadingRad = Drive.currentHeading
@@ -137,6 +136,31 @@ object Turret : Subsystem {
         }
 
         applyControl(0.0)
+    }
+
+    // NEW: Reset turret to point at goal from current position
+    fun runResetToGoal() {
+        val deltaX = goalX - Drive.currentX
+        val deltaY = goalY - Drive.currentY
+        val fieldAngleToGoal = atan2(deltaY, deltaX)
+        
+        val robotHeadingRad = Drive.currentHeading
+        val targetAngle = normalizeAngle(fieldAngleToGoal - robotHeadingRad + angleOffsetRad)
+        
+        val currentYaw = getYaw()
+        val error = normalizeAngle(targetAngle - currentYaw)
+        val errorDeg = Math.toDegrees(abs(error))
+
+        // Check if we're close enough to target
+        if (errorDeg < alignmentTolerance) {
+            motor.power = 0.0
+            targetYaw = targetAngle
+            currentState = State.LOCKED  // Transition to locked
+            isLocked = true
+            return
+        }
+
+        applyControl(targetAngle, 0.0)
     }
 
     private fun updateRobotAngularVelocity() {
@@ -165,7 +189,6 @@ object Turret : Subsystem {
         velTimer.reset()
     }
 
-    // Call these from your teleop to trim the aim while locked
     fun nudgeLeft() {
         angleOffsetRad += Math.toRadians(nudgeStepDegrees)
     }
@@ -183,6 +206,14 @@ object Turret : Subsystem {
         velTimer.reset()
         isLocked = true
         currentState = State.LOCKED
+    }
+
+    // NEW: Reset to goal - call this from button to point turret at goal
+    fun resetToGoal() {
+        lastRobotHeading = Drive.currentHeading
+        velTimer.reset()
+        isLocked = false
+        currentState = State.RESET_TO_GOAL
     }
 
     fun stop() {

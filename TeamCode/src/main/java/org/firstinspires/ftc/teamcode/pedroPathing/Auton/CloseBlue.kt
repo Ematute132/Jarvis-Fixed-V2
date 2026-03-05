@@ -157,6 +157,6 @@ class AutoBlue7 : NextFTCOpMode() {
 
     override fun onStop() {
         initCommands.autoStop().schedule()
-        Command.resetPose().schedule()
+        Drive.savePose()
     }
 }
